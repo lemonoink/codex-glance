@@ -4,6 +4,7 @@ import type { TaskPhase, TaskStatus } from "./protocol.js";
 
 interface ThreadState {
   threadId: string;
+  title?: string;
   project: string;
   parentThreadId?: string;
   status: TaskStatus | "IDLE";
@@ -33,12 +34,14 @@ export class ConversationReducer {
         ? {
             ...current,
             project: event.project,
+            ...(event.title ? { title: event.title } : {}),
             ...(event.parentThreadId
               ? { parentThreadId: event.parentThreadId }
               : {}),
           }
         : {
             threadId: event.threadId,
+            ...(event.title ? { title: event.title } : {}),
             project: event.project,
             ...(event.parentThreadId
               ? { parentThreadId: event.parentThreadId }
@@ -52,6 +55,7 @@ export class ConversationReducer {
       const changed =
         !current ||
         current.project !== next.project ||
+        current.title !== next.title ||
         current.parentThreadId !== next.parentThreadId;
       this.#threads.set(event.threadId, next);
       return changed;
@@ -185,6 +189,7 @@ export class ConversationReducer {
 
       conversations.push({
         conversationId: rootId,
+        ...(root.title ? { title: root.title } : {}),
         project: root.project,
         slot: this.#slot(rootId, root.project),
         status: selected.status,

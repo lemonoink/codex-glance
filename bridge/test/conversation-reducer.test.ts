@@ -18,7 +18,13 @@ test("aggregates subagents into a stable root conversation", () => {
   const reducer = new ConversationReducer();
   apply(
     reducer,
-    { type: "thread_discovered", threadId: "root", project: "glance", atMs: 1 },
+    {
+      type: "thread_discovered",
+      threadId: "root",
+      title: "优化显示界面",
+      project: "glance",
+      atMs: 1,
+    },
     {
       type: "thread_discovered",
       threadId: "child",
@@ -39,6 +45,7 @@ test("aggregates subagents into a stable root conversation", () => {
   const [conversation] = reducer.conversations();
   assert.equal(reducer.conversations().length, 1);
   assert.equal(conversation?.conversationId, "root");
+  assert.equal(conversation?.title, "优化显示界面");
   assert.equal(conversation?.status, "WORKING");
   assert.equal(conversation?.phase, "EDITING");
   assert.equal(conversation?.agents, 2);

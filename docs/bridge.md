@@ -2,9 +2,9 @@
 
 ## Data Flow / 数据流
 
-Bridge 以只读方式扫描 `~/.codex/sessions/` 中最近活动的 Codex Desktop JSONL 文件。每条原始记录会立即转换为安全事件：任务短哈希、项目目录简称、状态、阶段、时间和父任务关系。原始提示词、回复、推理、代码、命令及输出不会进入 reducer、日志或 USB 消息。
+Bridge 以只读方式扫描 `~/.codex/sessions/` 中最近活动的 Codex Desktop JSONL 文件。每条原始记录会立即转换为安全事件：任务短哈希、项目目录简称、状态、阶段、时间和父任务关系。Bridge 还会只读查询最新 `state_*.sqlite` 的 `id`、`name`、`cwd` 三列，用显式设置的 `name` 显示中文任务名；查询永远不选择内部 `title` 或 `preview`。原始提示词、回复、推理、代码、命令及输出不会进入 reducer、日志或 USB 消息。
 
-The bridge scans recently active Codex Desktop JSONL files under `~/.codex/sessions/` in read-only mode. Each source record is immediately reduced to a safe event containing only a short task hash, sanitized project label, state, phase, timing, and parent relationship. Prompts, responses, reasoning, code, commands, and output never enter the reducer, logs, or USB messages.
+The bridge scans recently active Codex Desktop JSONL files under `~/.codex/sessions/` in read-only mode. Each source record is immediately reduced to a safe event containing only a short task hash, project label, state, phase, timing, and parent relationship. It also reads only the `id`, `name`, and `cwd` columns from the latest `state_*.sqlite`; an explicitly assigned `name` becomes the displayed Unicode task name. Internal `title` and `preview` columns are never selected. Prompts, responses, reasoning, code, commands, and output never enter the reducer, logs, or USB messages.
 
 瞬时审批状态通过最新的 `logs_*.sqlite` 补充。SQL 只返回事件分类和任务 ID，不会把原始日志正文返回给 Bridge。该兼容层当前针对 Codex CLI `0.149.0-alpha.4.3`，未知记录会被安全忽略。
 
@@ -37,9 +37,9 @@ To read another Codex data directory:
 npm --prefix bridge run dev -- --codex-home /path/to/.codex
 ~~~
 
-`Ctrl-C` 会安全关闭串口。设备断连后 Bridge 按 1、2、4、8、10 秒退避重试，并在每次重试时重新扫描设备，因此更换 USB 接口或设备编号变化后无需重启。连接恢复后立即发送完整快照。空闲时每五秒发送 heartbeat，设备十秒未收到有效消息时显示 `LINK LOST`。
+`Ctrl-C` 会安全关闭串口。设备断连后 Bridge 按 1、2、4、8、10 秒退避重试，并在每次重试时重新扫描设备，因此更换 USB 接口或设备编号变化后无需重启。连接恢复后立即发送完整快照。Bridge 每五秒更新耗时；有多个任务时切换到下一页，否则发送页面刷新或 heartbeat。设备十秒未收到有效消息时显示 `OFFLINE`。
 
-`Ctrl-C` closes the serial port cleanly. After a disconnect, the bridge retries after 1, 2, 4, 8, then 10 seconds and rescans devices on every attempt, so changing USB ports or device numbers does not require a restart. It sends a full snapshot immediately after recovery. While idle it sends a heartbeat every five seconds; the device shows `LINK LOST` after ten seconds without a valid message.
+`Ctrl-C` closes the serial port cleanly. After a disconnect, the bridge retries after 1, 2, 4, 8, then 10 seconds and rescans devices on every attempt, so changing USB ports or device numbers does not require a restart. It sends a full snapshot immediately after recovery. Every five seconds it refreshes elapsed time and advances to the next task when multiple pages exist; otherwise it sends a page refresh or heartbeat. The device shows `OFFLINE` after ten seconds without a valid message.
 
 ## State Mapping / 状态映射
 
@@ -47,6 +47,7 @@ npm --prefix bridge run dev -- --codex-home /path/to/.codex
 - 明确的审批或用户输入请求为 `WAITING / APPROVAL`。 / Explicit approval or user-input requests become `WAITING / APPROVAL`.
 - 正常完成或中断为 `DONE / COMPLETE`；明确失败为 `ERROR / FAILED`。 / Completion or interruption becomes `DONE / COMPLETE`; explicit failure becomes `ERROR / FAILED`.
 - 子代理根据 `parent_thread_id` 聚合到根任务，并显示 `A2`、`A3`。 / Subagents are aggregated by `parent_thread_id` and shown as `A2`, `A3`, and so on.
+- 排序后的任务每页显示一个，最多保留 99 页；任何状态变化都会回到最高优先级页。 / Sorted tasks are displayed one per page, up to 99 pages; a state change returns the carousel to the highest-priority page.
 
 模拟器仍可用于不启动真实 Codex 任务的屏幕检查：
 

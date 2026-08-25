@@ -14,6 +14,7 @@ export type NormalizedCodexEvent =
   | (EventBase & {
       type: "thread_discovered";
       project: string;
+      title?: string;
       parentThreadId?: string;
     })
   | (EventBase & { type: "turn_started" })

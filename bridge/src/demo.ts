@@ -41,12 +41,14 @@ function task(
 function createDemoStages(nowMs: number): readonly ConversationState[][] {
   const glance = task(nowMs, {
     conversationId: "glance-usb",
+    title: "优化屏幕任务卡片",
     project: "Codex Glance",
     slot: 1,
     phase: "TESTING",
   });
   const storefront = task(nowMs, {
     conversationId: "storefront-ui",
+    title: "调整商城首页布局",
     project: "web-store",
     slot: 1,
     phase: "EDITING",
@@ -55,6 +57,7 @@ function createDemoStages(nowMs: number): readonly ConversationState[][] {
   });
   const api = task(nowMs, {
     conversationId: "api-refactor",
+    title: "重构订单接口",
     project: "api-server",
     slot: 2,
     phase: "COMMAND",
@@ -62,6 +65,7 @@ function createDemoStages(nowMs: number): readonly ConversationState[][] {
   });
   const mobile = task(nowMs, {
     conversationId: "mobile-release",
+    title: "确认移动端发布",
     project: "ios-client",
     slot: 3,
     phase: "APPROVAL",
@@ -70,6 +74,7 @@ function createDemoStages(nowMs: number): readonly ConversationState[][] {
   });
   const docs = task(nowMs, {
     conversationId: "docs-build",
+    title: "修复文档构建",
     project: "docs-site",
     slot: 1,
     phase: "FAILED",
@@ -128,6 +133,7 @@ if (!portPath) {
         seq,
         conversations,
         nowMs + index * intervalMs,
+        index,
       );
       console.log(
         "[bridge] -> dashboard seq=" +
@@ -138,14 +144,16 @@ if (!portPath) {
           snapshot.counts.wait +
           " err=" +
           snapshot.counts.err +
-          " visible=" +
-          snapshot.tasks.length,
+          " page=" +
+          snapshot.page.index +
+          "/" +
+          snapshot.page.total,
       );
       await transport.sendDashboard(snapshot);
       console.log("[bridge] <- ACK " + SESSION + ":" + seq);
 
       if (index === 0) {
-        console.log("[bridge] pausing 11s to trigger LINK LOST");
+        console.log("[bridge] pausing 11s to trigger OFFLINE");
         await delay(11_000);
         seq += 1;
         console.log("[bridge] -> heartbeat seq=" + seq);

@@ -69,6 +69,50 @@ test("sends a full snapshot then heartbeats while idle", async () => {
   assert.equal(source.closed, true);
 });
 
+test("automatically rotates one task per dashboard page", async () => {
+  const source = new FakeSource();
+  source.batches.push([
+    {
+      type: "thread_discovered",
+      threadId: "one",
+      title: "第一个任务",
+      project: "项目一",
+      atMs: 0,
+    },
+    { type: "turn_started", threadId: "one", atMs: 0 },
+    {
+      type: "thread_discovered",
+      threadId: "two",
+      title: "第二个任务",
+      project: "项目二",
+      atMs: 1,
+    },
+    { type: "turn_started", threadId: "two", atMs: 1 },
+  ]);
+  const transport = new FakeTransport();
+  const runtime = new BridgeRuntime({
+    source,
+    transportFactory: () => transport,
+    connectionSettleMs: 0,
+    session: "a13f",
+  });
+
+  await runtime.step(0);
+  await runtime.step(5_000);
+
+  assert.equal(transport.dashboards.length, 2);
+  assert.deepEqual(
+    transport.dashboards.map((snapshot) => snapshot.page),
+    [
+      { index: 1, total: 2 },
+      { index: 2, total: 2 },
+    ],
+  );
+  assert.equal(transport.dashboards[0]?.task?.title, "第二个任务");
+  assert.equal(transport.dashboards[1]?.task?.title, "第一个任务");
+  await runtime.close();
+});
+
 test("reconnects and sends the latest full state after a write failure", async () => {
   const source = new FakeSource();
   source.batches.push([

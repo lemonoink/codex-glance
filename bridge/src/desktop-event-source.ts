@@ -3,11 +3,13 @@ import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { StringDecoder } from "node:string_decoder";
 
+import { sanitizeDisplayLabel, sanitizeProjectLabel } from "./dashboard.js";
 import {
   CodexJsonlParser,
   type NormalizedCodexEvent,
   safeThreadId,
 } from "./codex-events.js";
+import { MAX_TITLE_BYTES } from "./protocol.js";
 
 const INITIAL_SESSION_WINDOW_MS = 24 * 60 * 60 * 1_000;
 const READ_CHUNK_BYTES = 64 * 1024;
@@ -24,6 +26,12 @@ interface SafeLogRow {
   id: number;
   safeKind: "attention_required" | "attention_resolved" | null;
   threadId: string | null;
+}
+
+interface SafeThreadMetadataRow {
+  cwd: string;
+  id: string;
+  name: string;
 }
 
 export interface CodexEventSource {
@@ -55,6 +63,11 @@ function logDatabaseNumber(name: string): number | undefined {
   return match?.[1] ? Number(match[1]) : undefined;
 }
 
+function stateDatabaseNumber(name: string): number | undefined {
+  const match = /^state_(\d+)\.sqlite$/.exec(name);
+  return match?.[1] ? Number(match[1]) : undefined;
+}
+
 export class DesktopEventSource implements CodexEventSource {
   readonly #codexHome: string;
   readonly #cursors = new Map<string, FileCursor>();
@@ -63,6 +76,9 @@ export class DesktopEventSource implements CodexEventSource {
   #logCursor = 0;
   #logDatabase: DatabaseSync | undefined;
   #logDatabasePath: string | undefined;
+  #stateDatabase: DatabaseSync | undefined;
+  #stateDatabasePath: string | undefined;
+  readonly #threadMetadata = new Map<string, string>();
 
   constructor(options: DesktopEventSourceOptions) {
     this.#codexHome = options.codexHome;
@@ -70,7 +86,8 @@ export class DesktopEventSource implements CodexEventSource {
   }
 
   async scan(nowMs: number): Promise<NormalizedCodexEvent[]> {
-    const events: NormalizedCodexEvent[] = [];
+    const events: NormalizedCodexEvent[] =
+      await this.#scanThreadMetadata(nowMs);
     try {
       const files = await collectJsonlFiles(join(this.#codexHome, "sessions"));
       for (const path of files) {
@@ -121,6 +138,59 @@ export class DesktopEventSource implements CodexEventSource {
   close(): void {
     this.#logDatabase?.close();
     this.#logDatabase = undefined;
+    this.#stateDatabase?.close();
+    this.#stateDatabase = undefined;
+  }
+
+  async #scanThreadMetadata(nowMs: number): Promise<NormalizedCodexEvent[]> {
+    try {
+      await this.#ensureLatestStateDatabase();
+      if (!this.#stateDatabase) {
+        return [];
+      }
+
+      // Only the explicit user-facing name is selected. The internal title and
+      // preview columns may contain prompt text and must never enter memory.
+      const rows = this.#stateDatabase
+        .prepare(
+          `SELECT id, name, cwd
+             FROM threads
+            WHERE archived = 0
+              AND name IS NOT NULL
+              AND trim(name) <> ''`,
+        )
+        .all() as unknown as SafeThreadMetadataRow[];
+      const events: NormalizedCodexEvent[] = [];
+      for (const row of rows) {
+        const threadId = safeThreadId(String(row.id));
+        const project = sanitizeProjectLabel(String(row.cwd));
+        const title = sanitizeDisplayLabel(
+          String(row.name),
+          "Codex 任务",
+          MAX_TITLE_BYTES,
+        );
+        const signature = project + "\0" + title;
+        if (this.#threadMetadata.get(threadId) === signature) {
+          continue;
+        }
+        this.#threadMetadata.set(threadId, signature);
+        events.push({
+          type: "thread_discovered",
+          threadId,
+          project,
+          title,
+          atMs: nowMs,
+        });
+      }
+      return events;
+    } catch {
+      this.#warnOnce(
+        "state",
+        "[source] user-facing task names are unavailable",
+      );
+      this.#closeStateDatabase();
+      return [];
+    }
   }
 
   async #readAppended(
@@ -242,11 +312,44 @@ export class DesktopEventSource implements CodexEventSource {
     this.#logCursor = Math.max(0, Number(row.id) - 1_000);
   }
 
+  async #ensureLatestStateDatabase(): Promise<void> {
+    const entries = await readdir(this.#codexHome, { withFileTypes: true });
+    const latest = entries
+      .filter((entry) => entry.isFile())
+      .map((entry) => ({
+        name: entry.name,
+        number: stateDatabaseNumber(entry.name),
+      }))
+      .filter(
+        (entry): entry is { name: string; number: number } =>
+          entry.number !== undefined,
+      )
+      .sort((left, right) => right.number - left.number)[0];
+    if (!latest) {
+      return;
+    }
+
+    const path = join(this.#codexHome, latest.name);
+    if (path === this.#stateDatabasePath && this.#stateDatabase) {
+      return;
+    }
+
+    this.#closeStateDatabase();
+    this.#stateDatabase = new DatabaseSync(path, { readOnly: true });
+    this.#stateDatabasePath = path;
+  }
+
   #closeLogDatabase(): void {
     this.#logDatabase?.close();
     this.#logDatabase = undefined;
     this.#logDatabasePath = undefined;
     this.#logCursor = 0;
+  }
+
+  #closeStateDatabase(): void {
+    this.#stateDatabase?.close();
+    this.#stateDatabase = undefined;
+    this.#stateDatabasePath = undefined;
   }
 
   #warnOnce(key: string, message: string): void {

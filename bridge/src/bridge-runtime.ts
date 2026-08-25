@@ -3,12 +3,13 @@ import { setTimeout as delay } from "node:timers/promises";
 
 import { ConversationReducer } from "./conversation-reducer.js";
 import type { CodexEventSource } from "./desktop-event-source.js";
-import { buildDashboardSnapshot } from "./dashboard.js";
+import { buildDashboardSnapshot, visibleConversations } from "./dashboard.js";
 import type { DashboardSnapshot } from "./protocol.js";
 
 const SOURCE_SCAN_INTERVAL_MS = 1_000;
 const UPDATE_DEBOUNCE_MS = 100;
 const LINK_MESSAGE_INTERVAL_MS = 5_000;
+const CAROUSEL_INTERVAL_MS = 5_000;
 const RECONNECT_DELAYS_MS = [1_000, 2_000, 4_000, 8_000, 10_000] as const;
 
 export interface BridgeTransport {
@@ -38,6 +39,7 @@ export class BridgeRuntime {
   #lastScanAtMs = Number.NEGATIVE_INFINITY;
   #lastSendAtMs = Number.NEGATIVE_INFINITY;
   #nextReconnectAtMs = Number.NEGATIVE_INFINITY;
+  #pageIndex = 0;
   #reconnectAttempt = 0;
   #seq = 0;
   #session: string;
@@ -79,13 +81,17 @@ export class BridgeRuntime {
       if (changed && this.#dirtySinceMs === undefined) {
         this.#dirtySinceMs = nowMs;
       }
+      if (changed) {
+        this.#pageIndex = 0;
+      }
     }
 
-    if (
-      this.#reducer.expireCompleted(nowMs) &&
-      this.#dirtySinceMs === undefined
-    ) {
-      this.#dirtySinceMs = nowMs;
+    const completedExpired = this.#reducer.expireCompleted(nowMs);
+    if (completedExpired) {
+      if (this.#dirtySinceMs === undefined) {
+        this.#dirtySinceMs = nowMs;
+      }
+      this.#pageIndex = 0;
     }
 
     if (!this.#transport && nowMs >= this.#nextReconnectAtMs) {
@@ -96,8 +102,16 @@ export class BridgeRuntime {
     }
 
     const conversations = this.#reducer.conversations();
+    const visibleCount = visibleConversations(conversations, nowMs).length;
+    const needsCarousel =
+      !this.#forceDashboard &&
+      visibleCount > 1 &&
+      nowMs - this.#lastDashboardAtMs >= CAROUSEL_INTERVAL_MS;
+    if (needsCarousel) {
+      this.#pageIndex = (this.#pageIndex + 1) % visibleCount;
+    }
     const needsElapsedRefresh =
-      conversations.some((item) => item.status !== "IDLE") &&
+      visibleCount > 0 &&
       nowMs - this.#lastDashboardAtMs >= LINK_MESSAGE_INTERVAL_MS;
     const debounceComplete =
       this.#dirtySinceMs !== undefined &&
@@ -153,6 +167,7 @@ export class BridgeRuntime {
       seq,
       conversations,
       nowMs,
+      this.#pageIndex,
     );
     try {
       await this.#transport?.sendDashboard(snapshot);
@@ -161,7 +176,7 @@ export class BridgeRuntime {
       this.#lastDashboardAtMs = nowMs;
       this.#lastSendAtMs = nowMs;
       this.#logger(
-        `[bridge] dashboard run=${snapshot.counts.run} wait=${snapshot.counts.wait} err=${snapshot.counts.err} visible=${snapshot.tasks.length}`,
+        `[bridge] dashboard run=${snapshot.counts.run} wait=${snapshot.counts.wait} err=${snapshot.counts.err} page=${snapshot.page.index}/${snapshot.page.total}`,
       );
     } catch {
       await this.#handleTransportFailure(nowMs);

@@ -97,3 +97,35 @@ test("recovers JSONL state, handles partial appends, and detects rotation", asyn
     await rm(codexHome, { recursive: true, force: true });
   }
 });
+
+test("reads only explicit user-facing task names from the state database", async () => {
+  const codexHome = await mkdtemp(join(tmpdir(), "codex-glance-metadata-"));
+  await mkdir(join(codexHome, "sessions"), { recursive: true });
+  const database = new DatabaseSync(join(codexHome, "state_1.sqlite"));
+  database.exec(
+    "CREATE TABLE threads (id TEXT, name TEXT, cwd TEXT, archived INTEGER, title TEXT)",
+  );
+  database.exec(
+    "INSERT INTO threads VALUES ('thread-named', '实现中文界面', '/Users/example/中文项目', 0, 'private prompt must not escape')",
+  );
+
+  const source = new DesktopEventSource({ codexHome });
+  try {
+    const events = await source.scan(100);
+    assert.deepEqual(events, [
+      {
+        type: "thread_discovered",
+        threadId: events[0]?.threadId,
+        title: "实现中文界面",
+        project: "中文项目",
+        atMs: 100,
+      },
+    ]);
+    assert.equal(JSON.stringify(events).includes("private prompt"), false);
+    assert.deepEqual(await source.scan(200), []);
+  } finally {
+    source.close();
+    database.close();
+    await rm(codexHome, { recursive: true, force: true });
+  }
+});

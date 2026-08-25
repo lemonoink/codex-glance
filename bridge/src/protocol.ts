@@ -1,7 +1,8 @@
-export const PROTOCOL_VERSION = 2 as const;
+export const PROTOCOL_VERSION = 3 as const;
 export const MAX_MESSAGE_BYTES = 512;
-export const MAX_VISIBLE_TASKS = 3;
-export const MAX_PROJECT_LENGTH = 14;
+export const MAX_TITLE_BYTES = 96;
+export const MAX_PROJECT_BYTES = 48;
+export const MAX_PAGE_COUNT = 99;
 
 export const TASK_STATUSES = ["WORKING", "WAITING", "DONE", "ERROR"] as const;
 export const TASK_PHASES = [
@@ -26,8 +27,14 @@ export interface DashboardCounts {
   err: number;
 }
 
+export interface DashboardPage {
+  index: number;
+  total: number;
+}
+
 export interface DashboardTask {
   id: string;
+  title: string;
   project: string;
   slot: number;
   status: TaskStatus;
@@ -42,7 +49,8 @@ export interface DashboardSnapshot {
   session: string;
   seq: number;
   counts: DashboardCounts;
-  tasks: DashboardTask[];
+  page: DashboardPage;
+  task: DashboardTask | null;
 }
 
 export interface HeartbeatMessage {
@@ -75,6 +83,22 @@ function validateToken(
   }
 }
 
+function validateDisplayText(
+  name: string,
+  value: string,
+  maximumBytes: number,
+): void {
+  if (
+    value.length === 0 ||
+    Buffer.byteLength(value, "utf8") > maximumBytes ||
+    /[\u0000-\u001f\u007f-\u009f\u200b-\u200f\u202a-\u202e\u2060-\u206f]/u.test(
+      value,
+    )
+  ) {
+    throw new TypeError("Invalid " + name);
+  }
+}
+
 function validateSession(session: string): void {
   validateToken("session", session, /^[a-f0-9]+$/, 8);
   if (session.length < 4) {
@@ -99,7 +123,8 @@ export function createDashboardSnapshot(
   session: string,
   seq: number,
   counts: DashboardCounts,
-  tasks: readonly DashboardTask[],
+  page: DashboardPage,
+  task: DashboardTask | null,
 ): DashboardSnapshot {
   validateSession(session);
   if (!isUint32(seq)) {
@@ -112,20 +137,26 @@ export function createDashboardSnapshot(
   ) {
     throw new RangeError("Dashboard counts must be integers from 0 to 99");
   }
-  if (tasks.length > MAX_VISIBLE_TASKS) {
-    throw new RangeError(
-      "Dashboard supports at most " + MAX_VISIBLE_TASKS + " tasks",
-    );
+  const invalidEmptyPage =
+    page.total === 0 && (page.index !== 0 || task !== null);
+  const invalidTaskPage =
+    page.total > 0 &&
+    (page.index < 1 || page.index > page.total || task === null);
+  if (
+    !isSmallCount(page.index) ||
+    !isSmallCount(page.total) ||
+    page.total > MAX_PAGE_COUNT ||
+    invalidEmptyPage ||
+    invalidTaskPage
+  ) {
+    throw new RangeError("Dashboard page and task are inconsistent");
   }
 
-  const validatedTasks = tasks.map((task) => {
+  let validatedTask: DashboardTask | null = null;
+  if (task) {
     validateToken("task id", task.id, /^[a-f0-9]+$/, 8);
-    validateToken(
-      "project",
-      task.project,
-      /^[A-Za-z0-9._-]+$/,
-      MAX_PROJECT_LENGTH,
-    );
+    validateDisplayText("title", task.title, MAX_TITLE_BYTES);
+    validateDisplayText("project", task.project, MAX_PROJECT_BYTES);
     if (!isSmallCount(task.slot) || task.slot === 0) {
       throw new RangeError("Task slot must be an integer from 1 to 99");
     }
@@ -141,8 +172,8 @@ export function createDashboardSnapshot(
     if (!isSmallCount(task.agents) || task.agents === 0) {
       throw new RangeError("Agent count must be an integer from 1 to 99");
     }
-    return { ...task };
-  });
+    validatedTask = { ...task };
+  }
 
   return {
     v: PROTOCOL_VERSION,
@@ -150,7 +181,8 @@ export function createDashboardSnapshot(
     session,
     seq,
     counts: { ...counts },
-    tasks: validatedTasks,
+    page: { ...page },
+    task: validatedTask,
   };
 }
 

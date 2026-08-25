@@ -49,7 +49,7 @@ test("normalizes lifecycle and phase records without retaining source content", 
   assert.equal(events[0]?.threadId, safeThreadId("desktop-thread-1"));
   assert.equal(
     events[0]?.type === "thread_discovered" ? events[0].project : undefined,
-    "Private-Projec",
+    "Private Project",
   );
   assert.equal(JSON.stringify(events).includes("must-not-escape"), false);
   assert.equal(JSON.stringify(events).includes("secret"), false);

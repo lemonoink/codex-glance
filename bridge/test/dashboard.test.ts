@@ -7,6 +7,7 @@ import {
   buildDashboardSnapshot,
   hashConversationId,
   sanitizeProjectLabel,
+  sanitizeTaskTitle,
 } from "../src/dashboard.js";
 
 const NOW = 1_000_000;
@@ -18,7 +19,8 @@ function conversation(
 ): ConversationState {
   return {
     conversationId: id,
-    project: "/Users/test/Codex Glance",
+    title: `任务 ${id}`,
+    project: "/Users/test/中文项目",
     slot: 1,
     status,
     phase: status === "ERROR" ? "FAILED" : "TESTING",
@@ -28,28 +30,28 @@ function conversation(
   };
 }
 
-test("prioritizes errors, waiting tasks, then recent work", () => {
-  const snapshot = buildDashboardSnapshot(
-    "a13f",
-    1,
-    [
-      conversation("work-old", "WORKING", NOW - 2_000),
-      conversation("wait-new", "WAITING", NOW - 1_000),
-      conversation("error", "ERROR", NOW - 500),
-      conversation("work-new", "WORKING", NOW - 100),
-    ],
-    NOW,
+test("prioritizes tasks and selects exactly one requested page", () => {
+  const conversations = [
+    conversation("work-old", "WORKING", NOW - 2_000),
+    conversation("wait-new", "WAITING", NOW - 1_000),
+    conversation("error", "ERROR", NOW - 500),
+    conversation("work-new", "WORKING", NOW - 100),
+  ];
+  const pages = [0, 1, 2, 3].map((page) =>
+    buildDashboardSnapshot("a13f", page + 1, conversations, NOW, page),
   );
 
   assert.deepEqual(
-    snapshot.tasks.map((task) => task.id),
+    pages.map((snapshot) => snapshot.task?.id),
     [
       hashConversationId("error"),
       hashConversationId("wait-new"),
       hashConversationId("work-new"),
+      hashConversationId("work-old"),
     ],
   );
-  assert.deepEqual(snapshot.counts, { run: 2, wait: 1, err: 1 });
+  assert.deepEqual(pages[0]?.page, { index: 1, total: 4 });
+  assert.deepEqual(pages[0]?.counts, { run: 2, wait: 1, err: 1 });
 });
 
 test("keeps recent completions and expires old ones", () => {
@@ -64,15 +66,13 @@ test("keeps recent completions and expires old ones", () => {
     NOW,
   );
 
-  assert.equal(snapshot.tasks.length, 1);
-  assert.equal(snapshot.tasks[0]?.id, hashConversationId("recent"));
+  assert.deepEqual(snapshot.page, { index: 1, total: 1 });
+  assert.equal(snapshot.task?.id, hashConversationId("recent"));
 });
 
-test("sanitizes project paths without exposing arbitrary content", () => {
-  assert.equal(sanitizeProjectLabel("/tmp/Codex Glance"), "Codex-Glance");
-  assert.equal(sanitizeProjectLabel("///"), "project");
-  assert.equal(
-    sanitizeProjectLabel("long-project-name-here"),
-    "long-project-n",
-  );
+test("preserves safe Unicode labels and uses a private fallback title", () => {
+  assert.equal(sanitizeProjectLabel("/tmp/中文 项目"), "中文 项目");
+  assert.equal(sanitizeProjectLabel("///"), "项目");
+  assert.equal(sanitizeTaskTitle(undefined, 3), "Codex 任务 #3");
+  assert.equal(sanitizeTaskTitle("名称\n注入", 1), "名称注入");
 });
