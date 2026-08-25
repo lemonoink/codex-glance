@@ -20,7 +20,7 @@ export interface BridgeTransport {
 
 export interface BridgeRuntimeOptions {
   source: CodexEventSource;
-  transportFactory: () => BridgeTransport;
+  transportFactory: () => BridgeTransport | Promise<BridgeTransport>;
   logger?: (message: string) => void;
   connectionSettleMs?: number;
   session?: string;
@@ -31,7 +31,7 @@ export class BridgeRuntime {
   readonly #logger: (message: string) => void;
   readonly #reducer = new ConversationReducer();
   readonly #source: CodexEventSource;
-  readonly #transportFactory: () => BridgeTransport;
+  readonly #transportFactory: () => BridgeTransport | Promise<BridgeTransport>;
   #dirtySinceMs: number | undefined = 0;
   #forceDashboard = true;
   #lastDashboardAtMs = Number.NEGATIVE_INFINITY;
@@ -122,8 +122,9 @@ export class BridgeRuntime {
   }
 
   async #connect(nowMs: number): Promise<void> {
-    const transport = this.#transportFactory();
+    let transport: BridgeTransport | undefined;
     try {
+      transport = await this.#transportFactory();
       await transport.open();
       if (this.#connectionSettleMs > 0) {
         await delay(this.#connectionSettleMs);
@@ -132,10 +133,13 @@ export class BridgeRuntime {
       this.#reconnectAttempt = 0;
       this.#forceDashboard = true;
       this.#logger("[bridge] device connected");
-    } catch {
-      await transport.close().catch(() => undefined);
+    } catch (error) {
+      await transport?.close().catch(() => undefined);
       this.#scheduleReconnect(nowMs);
-      this.#logger("[bridge] device connection failed; retry scheduled");
+      const detail = error instanceof Error ? error.message : "unknown error";
+      this.#logger(
+        "[bridge] device connection failed: " + detail + "; retry scheduled",
+      );
     }
   }
 

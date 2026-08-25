@@ -15,8 +15,7 @@ bridge-test:
 	npm --prefix bridge run build
 
 bridge-run:
-	@test -n "$(PORT)" || (echo "PORT is required; run: npm --prefix bridge run ports" && exit 1)
-	npm --prefix bridge run dev -- --port "$(PORT)"
+	npm --prefix bridge run dev $(if $(PORT),-- --port "$(PORT)",)
 
 bridge-demo:
 	@test -n "$(PORT)" || (echo "PORT is required; run: npm --prefix bridge run ports" && exit 1)

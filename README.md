@@ -45,18 +45,26 @@ make firmware-upload PORT=/dev/cu.usbmodemXXXX
 
 The display self-test has passed on hardware. The firmware starts at WAITING FOR BRIDGE, then shows activity counts and up to three parallel conversations. A new ERROR or WAITING takes over the screen for two seconds; LINK LOST appears after ten seconds without a snapshot or heartbeat.
 
-查找设备并启动真实 Codex Desktop Bridge：
+插入设备并启动真实 Codex Desktop Bridge；Bridge 会自动发现唯一的 Espressif USB CDC 屏幕：
 
-Locate the device and start the real Codex Desktop bridge:
+Connect the device and start the real Codex Desktop bridge. The bridge automatically discovers the single Espressif USB CDC display:
+
+~~~bash
+make bridge-run
+~~~
+
+如果连接了多个候选设备，可查询端口并手动指定：
+
+If multiple candidate devices are connected, list the ports and select one explicitly:
 
 ~~~bash
 npm --prefix bridge run ports
 make bridge-run PORT=/dev/tty.usbmodemXXXX
 ~~~
 
-Bridge 只读监听 `~/.codex/sessions/`，将根任务和子代理聚合后发送到屏幕。当前兼容目标是 Codex CLI `0.149.0-alpha.4.3`；原始提示词、回复、推理、代码、命令和输出不会写入日志或 USB。运行方式、状态映射与排障说明见 [Desktop Bridge](docs/bridge.md)。
+Bridge 只读监听 `~/.codex/sessions/`，将根任务和子代理聚合后发送到屏幕。设备断连时会重新扫描，因此 USB 接口或设备编号变化后也能自动恢复。当前兼容目标是 Codex CLI `0.149.0-alpha.4.3`；原始提示词、回复、推理、代码、命令和输出不会写入日志或 USB。运行方式、状态映射与排障说明见 [Desktop Bridge](docs/bridge.md)。
 
-The bridge watches `~/.codex/sessions/` read-only, aggregates root tasks and subagents, and sends the reduced state to the display. The current compatibility target is Codex CLI `0.149.0-alpha.4.3`; raw prompts, responses, reasoning, code, commands, and output are never logged or sent over USB. See [Desktop Bridge](docs/bridge.md) for runtime behavior, state mapping, and troubleshooting.
+The bridge watches `~/.codex/sessions/` read-only, aggregates root tasks and subagents, and sends the reduced state to the display. It rescans devices after a disconnect, so a changed USB device number is recovered automatically. The current compatibility target is Codex CLI `0.149.0-alpha.4.3`; raw prompts, responses, reasoning, code, commands, and output are never logged or sent over USB. See [Desktop Bridge](docs/bridge.md) for runtime behavior, state mapping, and troubleshooting.
 
 也可以运行五对话模拟：
 

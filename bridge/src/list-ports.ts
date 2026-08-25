@@ -1,5 +1,7 @@
 import { SerialPort } from "serialport";
 
+import { isEspressifPort } from "./serial-device.js";
+
 const ports = await SerialPort.list();
 
 if (ports.length === 0) {
@@ -9,6 +11,9 @@ if (ports.length === 0) {
     const details = [port.manufacturer, port.vendorId, port.productId]
       .filter(Boolean)
       .join(" / ");
-    console.log(details ? `${port.path} (${details})` : port.path);
+    const candidate = isEspressifPort(port) ? " [Codex Glance candidate]" : "";
+    console.log(
+      (details ? `${port.path} (${details})` : port.path) + candidate,
+    );
   }
 }

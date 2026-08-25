@@ -101,3 +101,32 @@ test("reconnects and sends the latest full state after a write failure", async (
   });
   await runtime.close();
 });
+
+test("retries discovery and accepts an asynchronously selected replacement port", async () => {
+  const source = new FakeSource();
+  const recovered = new FakeTransport();
+  let attempts = 0;
+  const runtime = new BridgeRuntime({
+    source,
+    transportFactory: async () => {
+      attempts += 1;
+      if (attempts === 1) {
+        throw new Error("display absent");
+      }
+      return recovered;
+    },
+    connectionSettleMs: 0,
+    session: "a13f",
+  });
+
+  await runtime.step(0);
+  assert.equal(attempts, 1);
+  await runtime.step(999);
+  assert.equal(attempts, 1);
+  await runtime.step(1_000);
+
+  assert.equal(attempts, 2);
+  assert.equal(recovered.opened, true);
+  assert.equal(recovered.dashboards.length, 1);
+  await runtime.close();
+});

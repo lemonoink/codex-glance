@@ -12,9 +12,17 @@ Transient approval state is supplemented from the latest `logs_*.sqlite`. SQL re
 
 ## Run / 运行
 
-先查找串口，再启动真实 Bridge：
+插入屏幕后直接启动真实 Bridge。Bridge 优先匹配 Espressif 厂商信息或 USB VID `303A`，只存在一个 `usbmodem` 时也可作为安全回退：
 
-Find the serial port, then start the real bridge:
+Connect the display and start the real bridge. Discovery prefers Espressif manufacturer metadata or USB VID `303A`, with a single `usbmodem` device as a safe fallback:
+
+~~~bash
+npm --prefix bridge run dev
+~~~
+
+如果存在多个候选设备，Bridge 不会猜测。使用以下命令查找标记为 `Codex Glance candidate` 的端口并手动覆盖：
+
+When multiple candidates exist, the bridge does not guess. List ports, find the one marked `Codex Glance candidate`, and override discovery explicitly:
 
 ~~~bash
 npm --prefix bridge run ports
@@ -26,12 +34,12 @@ npm --prefix bridge run dev -- --port /dev/tty.usbmodemXXXX
 To read another Codex data directory:
 
 ~~~bash
-npm --prefix bridge run dev -- --port /dev/tty.usbmodemXXXX --codex-home /path/to/.codex
+npm --prefix bridge run dev -- --codex-home /path/to/.codex
 ~~~
 
-`Ctrl-C` 会安全关闭串口。设备断连后 Bridge 按 1、2、4、8、10 秒退避重试；连接恢复后立即发送完整快照。空闲时每五秒发送 heartbeat，设备十秒未收到有效消息时显示 `LINK LOST`。
+`Ctrl-C` 会安全关闭串口。设备断连后 Bridge 按 1、2、4、8、10 秒退避重试，并在每次重试时重新扫描设备，因此更换 USB 接口或设备编号变化后无需重启。连接恢复后立即发送完整快照。空闲时每五秒发送 heartbeat，设备十秒未收到有效消息时显示 `LINK LOST`。
 
-`Ctrl-C` closes the serial port cleanly. After a disconnect, the bridge retries after 1, 2, 4, 8, then 10 seconds and sends a full snapshot immediately after recovery. While idle it sends a heartbeat every five seconds; the device shows `LINK LOST` after ten seconds without a valid message.
+`Ctrl-C` closes the serial port cleanly. After a disconnect, the bridge retries after 1, 2, 4, 8, then 10 seconds and rescans devices on every attempt, so changing USB ports or device numbers does not require a restart. It sends a full snapshot immediately after recovery. While idle it sends a heartbeat every five seconds; the device shows `LINK LOST` after ten seconds without a valid message.
 
 ## State Mapping / 状态映射
 
