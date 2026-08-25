@@ -27,6 +27,12 @@ export class SerialTransport {
       autoOpen: false,
     });
     this.#port.on("data", (chunk: Buffer) => this.#handleData(chunk));
+    this.#port.on("error", () => {
+      this.#rejectPending("Serial port error before ACK");
+    });
+    this.#port.on("close", () => {
+      this.#rejectPending("Serial port closed before ACK");
+    });
   }
 
   async open(): Promise<void> {
@@ -36,11 +42,7 @@ export class SerialTransport {
   }
 
   async close(): Promise<void> {
-    for (const pending of this.#pendingAcks.values()) {
-      clearTimeout(pending.timer);
-      pending.reject(new Error("Serial port closed before ACK"));
-    }
-    this.#pendingAcks.clear();
+    this.#rejectPending("Serial port closed before ACK");
 
     if (!this.#port.isOpen) {
       return;
@@ -68,6 +70,9 @@ export class SerialTransport {
   }
 
   async #send(payload: string, session: string, seq: number): Promise<void> {
+    if (!this.#port.isOpen) {
+      throw new Error("Serial port is not open");
+    }
     const key = this.#ackKey(session, seq);
     const ack = new Promise<void>((resolve, reject) => {
       const timer = setTimeout(() => {
@@ -121,8 +126,6 @@ export class SerialTransport {
   }
 
   #handleLine(line: string): void {
-    console.log("[device] " + line);
-
     let message: unknown;
     try {
       message = JSON.parse(line);
@@ -162,5 +165,13 @@ export class SerialTransport {
     clearTimeout(pending.timer);
     this.#pendingAcks.delete(key);
     pending.resolve();
+  }
+
+  #rejectPending(reason: string): void {
+    for (const pending of this.#pendingAcks.values()) {
+      clearTimeout(pending.timer);
+      pending.reject(new Error(reason));
+    }
+    this.#pendingAcks.clear();
   }
 }

@@ -45,9 +45,22 @@ make firmware-upload PORT=/dev/cu.usbmodemXXXX
 
 The display self-test has passed on hardware. The firmware starts at WAITING FOR BRIDGE, then shows activity counts and up to three parallel conversations. A new ERROR or WAITING takes over the screen for two seconds; LINK LOST appears after ten seconds without a snapshot or heartbeat.
 
-查找设备并运行五对话模拟：
+查找设备并启动真实 Codex Desktop Bridge：
 
-Locate the device and run the five-conversation simulation:
+Locate the device and start the real Codex Desktop bridge:
+
+~~~bash
+npm --prefix bridge run ports
+make bridge-run PORT=/dev/tty.usbmodemXXXX
+~~~
+
+Bridge 只读监听 `~/.codex/sessions/`，将根任务和子代理聚合后发送到屏幕。当前兼容目标是 Codex CLI `0.149.0-alpha.4.3`；原始提示词、回复、推理、代码、命令和输出不会写入日志或 USB。运行方式、状态映射与排障说明见 [Desktop Bridge](docs/bridge.md)。
+
+The bridge watches `~/.codex/sessions/` read-only, aggregates root tasks and subagents, and sends the reduced state to the display. The current compatibility target is Codex CLI `0.149.0-alpha.4.3`; raw prompts, responses, reasoning, code, commands, and output are never logged or sent over USB. See [Desktop Bridge](docs/bridge.md) for runtime behavior, state mapping, and troubleshooting.
+
+也可以运行五对话模拟：
+
+You can also run the five-conversation simulation:
 
 ~~~bash
 npm --prefix bridge run ports
@@ -64,7 +77,7 @@ The demo starts with an 11-second silence to verify LINK LOST and heartbeat reco
 
 ## 仓库结构 / Repository Layout
 
-- bridge/：TypeScript 桌面桥接程序、选择器和模拟器。 / TypeScript bridge, selector, and simulator.
+- bridge/：TypeScript Desktop 事件适配器、状态 reducer、USB Bridge 和模拟器。 / TypeScript Desktop event adapter, state reducer, USB bridge, and simulator.
 - firmware/codex_glance/：ESP32-S3 固件。 / ESP32-S3 firmware.
 - scripts/：可复现的开发环境检查脚本。 / Reproducible development checks.
 - docs/：架构、仪表盘和通信协议文档。 / Architecture, dashboard, and protocol documentation.
