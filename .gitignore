@@ -1,0 +1,16 @@
+.DS_Store
+.env
+.env.*
+!.env.example
+
+node_modules/
+bridge/dist/
+bridge/coverage/
+
+build/
+work/
+*.log
+serial-logs/
+
+.idea/
+.codex/
